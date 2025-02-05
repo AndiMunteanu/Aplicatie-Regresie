@@ -18,9 +18,6 @@ regression_functions <- list(
         y[y == 0] <- 1e-10
         glm(y ~ x, family = gaussian(link = "log"))
     },
-    # "logistică" = function(x, y) {
-    #     glm(y ~ x, family = binomial)
-    # },
     "quadratică" = function(x, y) {
         glm(y ~ poly(x, 2), family = gaussian(link = "identity"))
     }
@@ -43,10 +40,6 @@ coef_functions <- list(
         paste0("<strong>", y, " = ", coef[3], " * ", x, "^2 + ", coef[2], " * ", x, " + ", coef[1], "<br>sau<br>", "y = ", coef[3], " * x^2 + ", coef[2], " * x + ", coef[1], "</strong>")
     }
 )
-
-# regression_predict_functions <- list(
-#     "liniar" = function()
-# )
 
 ui <- fluidPage(
     useShinyjs(),
@@ -73,6 +66,12 @@ ui <- fluidPage(
             actionButton("calcul", "Calculează regresiile")
         ),
         mainPanel(
+            downloadButton(
+                "download",
+                "Descarcă graficele",
+                class = "btn-danger"
+            ),
+            HTML("<br><br>"),
             do.call(
                 tagList,
                 lapply(names(regression_functions), function(x) {
@@ -88,6 +87,8 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
+    disable("download")
+
     data_frame <- reactive({
         req(input$fisier)
 
@@ -135,7 +136,6 @@ server <- function(input, output, session) {
             }
             new_df <- data_frame()[, c(choice_x, choice_y)]
             new_df <- new_df[complete.cases(new_df), ]
-            print(sum(is.na(new_df)))
             return(new_df)
         })
     })
@@ -164,6 +164,7 @@ server <- function(input, output, session) {
 
     # linear
     regr_model_list <- reactive({
+        enable("download")
         df <- filtered_df()
 
         isolate({
@@ -172,7 +173,6 @@ server <- function(input, output, session) {
                 regression_functions[[x]](df[, 1], df[, 2])
             })
             names(learned_model) <- names(regression_functions)
-            print(lapply(learned_model, summary))
             return(learned_model)
         })     
     }) %>% bindEvent(input$calcul)
@@ -205,8 +205,6 @@ server <- function(input, output, session) {
                     "AIC: ", round(aic, 2), "<br>",
                     "Coeficienți: ", tabel_stats
                 )
-
-                print(text_mod)
 
                 return(text_mod)
             })
@@ -253,6 +251,19 @@ server <- function(input, output, session) {
             })
         })
     })
+
+    output$download <- downloadHandler(
+        filename = function() {
+            paste("regresii", ".pdf", sep = "")
+        },
+        content = function(file) {
+            cairo_pdf(file, width = 10, height = 10)
+            lapply(names(regression_functions), function(x) {
+                print(regr_plot_list()[[x]])
+            })
+            dev.off()
+        }
+    )
 }
 
 shinyApp(ui = ui, server = server)
