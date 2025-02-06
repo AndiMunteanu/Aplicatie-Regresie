@@ -11,30 +11,30 @@ library(shinyjs)
 # gaussian and quadric. The user will be able to upload the dataset, to choose
 # the columns to be used in the regressions.
 regression_functions <- list(
-    "liniară" = function(x, y) {
+    "liniara" = function(x, y) {
         glm(y ~ x, family = gaussian(link = "identity"))
     },
-    "exponențială" = function(x, y) {
+    "exponentiala" = function(x, y) {
         y[y == 0] <- 1e-10
         glm(y ~ x, family = gaussian(link = "log"))
     },
-    "quadratică" = function(x, y) {
+    "quadratica" = function(x, y) {
         glm(y ~ poly(x, 2), family = gaussian(link = "identity"))
     }
 )
 
 coef_functions <- list(
-    "liniară" = function(coef, col_names) {
+    "liniara" = function(coef, col_names) {
         y <- col_names[2]
         x <- col_names[1]
         paste0("<strong>", y, " = ", coef[2], " * ", x, " + ", coef[1], "<br>sau<br>", "y = ", coef[2], " * x + ", coef[1], "</strong>")
     },
-    "exponențială" = function(coef, col_names) {
+    "exponentiala" = function(coef, col_names) {
         y <- col_names[2]
         x <- col_names[1]
         paste0("<strong>", y, " = exp(", coef[1], " + ", coef[2], " * ", x, ")", "<br>sau<br>", "y = exp(", coef[1], " + ", coef[2], " * x)</strong>")
     },
-    "quadratică" = function(coef, col_names) {
+    "quadratica" = function(coef, col_names) {
         y <- col_names[2]
         x <- col_names[1]
         paste0("<strong>", y, " = ", coef[3], " * ", x, "^2 + ", coef[2], " * ", x, " + ", coef[1], "<br>sau<br>", "y = ", coef[3], " * x^2 + ", coef[2], " * x + ", coef[1], "</strong>")
@@ -252,18 +252,25 @@ server <- function(input, output, session) {
         })
     })
 
-    output$download <- downloadHandler(
-        filename = function() {
-            paste("regresii", ".pdf", sep = "")
-        },
-        content = function(file) {
-            cairo_pdf(file, width = 10, height = 10)
-            lapply(names(regression_functions), function(x) {
-                print(regr_plot_list()[[x]])
-            })
-            dev.off()
-        }
-    )
+    observe({
+
+        output$download <- downloadHandler(
+            filename = function() {
+                paste("regresii", ".pdf", sep = "")
+            },
+            content = function(file) {
+                regr_plots <- regr_plot_list()
+                isolate({
+                    pdf(file, width = 10, height = 10)
+                    lapply(names(regression_functions), function(x) {
+                        print(regr_plots[[x]])
+                        print(x)
+                    })
+                    dev.off()
+                })
+            }
+        )
+    })
 }
 
 shinyApp(ui = ui, server = server)
