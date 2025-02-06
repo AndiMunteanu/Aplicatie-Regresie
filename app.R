@@ -6,6 +6,11 @@ library(readxl)
 library(ciTools)
 library(shinyjs)
 
+downloadButton <- function(...) {
+    tag <- shiny::downloadButton(...)
+    tag$attribs$download <- NULL
+    tag
+}
 # creates a shiny app that reads an excel file containing a dataset with at least
 # two columns and performs the following regressions: linear, logistic, exponential,
 # gaussian and quadric. The user will be able to upload the dataset, to choose
