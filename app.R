@@ -5,6 +5,7 @@ library(DT)
 library(readxl)
 library(ciTools)
 library(shinyjs)
+library(latex2exp)
 
 downloadButton <- function(...) {
     tag <- shiny::downloadButton(...)
@@ -46,6 +47,53 @@ coef_functions <- list(
     }
 )
 
+coef_functions_latex <- list(
+    "liniara" = function(coef, col_names) {
+        y <- col_names[2]
+        x <- col_names[1]
+       TeX(paste0("$ y = ", round(coef[2], 2), " \\cdot x + ", round(coef[1], 2), "$"))
+    },
+    "exponentiala" = function(coef, col_names) {
+        y <- col_names[2]
+        x <- col_names[1]
+        TeX(paste0("$ y  = e^{", round(coef[1], 2), " + ", round(coef[2], 2), " \\cdot x}$"))
+    },
+    "quadratica" = function(coef, col_names) {
+        y <- col_names[2]
+        x <- col_names[1]
+        TeX(paste0("y = ", round(coef[3], 2), " $\\cdot x^2$ + ", round(coef[2], 2), " $\\cdot$ x + ", round(coef[1], 2)))
+    }
+)
+
+regression_plot <- function(df, regr_model, regr_name, r2 = "", equation_latex = "", conf_level = 0.05, legend.position = c(0, 1), axis_size = 12, title_size = 16, legend_size = 14, point_size = 3, line_size = 1.5) {
+    base_plot <- ggplot() +
+        geom_point(data = df, mapping = aes_string(x = colnames(df)[1], y = colnames(df)[2]), size = point_size) +
+        theme_classic()
+
+    prediction <- add_ci(df = NULL, fit = regr_model, alpha = conf_level, names = c("lwr", "upr"))
+    prediction$x <- df[, 1]
+    prediction$y <- df[, 2]
+
+    return(base_plot +
+        geom_ribbon(data = prediction, mapping = aes(x = x, y = y, ymin = lwr, ymax = upr), fill = "gray", alpha = 0.5) +
+        geom_line(data = prediction, mapping = aes(x = x, y = pred, colour = "line_eq"), size = line_size) +
+        scale_colour_manual(values = c("line_eq" = "red"), name = "", labels = unname(equation_latex)) +
+        labs(
+            title = paste0("Regresie ", regr_name, " - ", paste0(colnames(df), collapse = " vs ")),
+            subtitle = TeX(paste0("$R^2 = ", r2, "$"))
+        ) +
+        theme(
+            legend.position = legend.position,
+            legend.justification = c(0, 1),
+            plot.title = element_text(hjust = 0.5, size = title_size),
+            plot.subtitle = element_text(hjust = 0.5, size = title_size * 0.8),
+            axis.title = element_text(size = axis_size),
+            axis.text = element_text(size = axis_size * 0.8),
+            legend.text = element_text(size = legend_size)
+        ) 
+    )
+}
+
 ui <- fluidPage(
     useShinyjs(),
     titlePanel("Regresie liniară"),
@@ -68,7 +116,14 @@ ui <- fluidPage(
         sidebarPanel(
             selectInput("x", "Alege coloana x", choices = NULL),
             selectInput("y", "Alege coloana y", choices = NULL),
-            actionButton("calcul", "Calculează regresiile")
+            actionButton("calcul", "Calculează regresiile"),
+            shiny::sliderInput("conf_level", "Nivel de încredere", min = 0.01, max = 0.1, value = 0.05, step = 0.01),
+            shiny::p("Parametri grafici:"),
+            shiny::sliderInput("axis_size", "Font text axe", min = 4, max = 25, value = 14, step = 1),
+            shiny::sliderInput("title_size", "Font titlu grafic", min = 4, max = 30, value = 16, step = 1),
+            shiny::sliderInput("legend_size", "Font ecautie", min = 4, max = 25, value = 14, step = 1),
+            shiny::sliderInput("point_size", "Dimensiune puncte", min = 1, max = 10, value = 3, step = 1),
+            shiny::sliderInput("line_size", "Dimensiune linie regresie", min = 0.5, max = 5, value = 1.5, step = 0.5)
         ),
         mainPanel(
             downloadButton(
@@ -155,18 +210,6 @@ server <- function(input, output, session) {
         })
     })
 
-    base_plot <- reactive({
-        df <- filtered_df()
-
-        isolate({
-            req(!is.null(df), nrow(df) > 0)
-
-            return(ggplot(df, aes(x = .data[[colnames(df)[1]]], y = .data[[colnames(df)[[2]]]])) +
-                geom_point() +
-                theme_classic())
-        })
-    })
-
     # linear
     regr_model_list <- reactive({
         enable("download")
@@ -202,6 +245,11 @@ server <- function(input, output, session) {
                     orig_cn
                 )
 
+                formula_str_latex <- coef_functions_latex[[x]](
+                    round(coef(current_mod), 2),
+                    orig_cn
+                )
+
                 # create a string
 
                 text_mod <- paste0(
@@ -211,7 +259,16 @@ server <- function(input, output, session) {
                     "Coeficienți: ", tabel_stats
                 )
 
-                return(text_mod)
+                return(
+                    list(
+                        text = text_mod,
+                        r2 = r2,
+                        aic = aic,
+                        coef_table = table_stats,
+                        formula = formula_str,
+                        formula_latex = formula_str_latex
+                    )
+                )
             })
             names(stats_list) <- names(regression_functions)
 
@@ -222,16 +279,36 @@ server <- function(input, output, session) {
 
     regr_plot_list <- reactive({
         regr_mod <- regr_model_list()
-        ggobj <- base_plot()
-        conf_level <- 0.05
+        # ggobj <- base_plot()
+        conf_level <- input$conf_level
+        axis_size <- input$axis_size
+        title_size <- input$title_size
+        legend_size <- input$legend_size
+        point_size <- input$point_size
+        line_size <- input$line_size
+        current_df <- filtered_df()
+        regr_stats <- regr_stat_list()
+
+        shiny::req(regr_mod, conf_level, current_df, regr_stats, axis_size, title_size, legend_size, point_size, line_size)
+
 
         isolate({
             plt_list <- lapply(names(regression_functions), function(x) {
-                prediction <- add_ci(df = NULL, fit = regr_mod[[x]], alpha = conf_level, names = c("lwr", "upr"))
-                return(ggobj +
-                    geom_ribbon(aes(ymin = prediction$lwr, ymax = prediction$upr), fill = "gray", alpha = 0.5) +
-                    geom_line(aes(y = prediction$pred), color = "red") +
-                    ggtitle(paste("Regresie", x))
+                return(
+                    regression_plot(
+                        df = current_df,
+                        regr_model = regr_mod[[x]],
+                        regr_name = x,
+                        r2 = round(regr_stats[[x]]$r2, 4),
+                        equation_latex = regr_stats[[x]]$formula_latex,
+                        conf_level = conf_level,
+                        legend.position = c(0, 1),
+                        axis_size = axis_size,
+                        title_size = title_size,
+                        legend_size = legend_size,
+                        point_size = point_size,
+                        line_size = line_size
+                    )
                 )
             })
             names(plt_list) <- names(regression_functions)
@@ -251,7 +328,7 @@ server <- function(input, output, session) {
                 })
 
                 output[[paste0("sumar_", regr_name)]] <- renderUI({
-                    HTML(regr_stats[[regr_name]])
+                    HTML(regr_stats[[regr_name]]$text)
                 })
             })
         })
@@ -269,7 +346,6 @@ server <- function(input, output, session) {
                     pdf(file, width = 10, height = 10)
                     lapply(names(regression_functions), function(x) {
                         print(regr_plots[[x]])
-                        print(x)
                     })
                     dev.off()
                 })
