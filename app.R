@@ -67,7 +67,7 @@ coef_functions_latex <- list(
 
 regression_plot <- function(df, regr_model, regr_name, r2 = "", equation_latex = "", conf_level = 0.05, legend.position = c(0, 1), axis_size = 12, title_size = 16, legend_size = 14, point_size = 3, line_size = 1.5) {
     base_plot <- ggplot() +
-        geom_point(data = df, mapping = aes_string(x = colnames(df)[1], y = colnames(df)[2]), size = point_size) +
+        geom_point(data = df, mapping = aes(x = .data[[colnames(df)[1]]], y = .data[[colnames(df)[2]]]), size = point_size) +
         theme_classic()
 
     prediction <- add_ci(df = NULL, fit = regr_model, alpha = conf_level, names = c("lwr", "upr"))
